@@ -1,0 +1,86 @@
+name: build-mac
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  build-mac-intel:
+    name: Build for macOS Intel
+    runs-on: macos-13
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      # Pin dependencies for compatibility
+      - run: pip install 'numpy<2' 'cx-Freeze==6.15.16' audio-separator onnxruntime
+      - run: cxfreeze main.py --target-dir=audio-separator-mac-intel --target-name=audio-separator --packages=audio_separator,onnxruntime
+      - run: |
+          chmod +x audio-separator-mac-intel/audio-separator
+          ./audio-separator-mac-intel/audio-separator --help
+      - run: ditto -c -k --sequesterRsrc --keepParent audio-separator-mac-intel audio-separator-mac-intel.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audio-separator-mac-intel
+          path: audio-separator-mac-intel.zip
+
+  build-mac-arm:
+    name: Build for macOS ARM (Apple Silicon)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      - run: pip install 'numpy<2' 'cx-Freeze==6.15.16' audio-separator onnxruntime
+      - run: cxfreeze main.py --target-dir=audio-separator-mac-arm --target-name=audio-separator --packages=audio_separator,onnxruntime
+      - run: |
+          chmod +x audio-separator-mac-arm/audio-separator
+          ./audio-separator-mac-arm/audio-separator --help
+      - run: ditto -c -k --sequesterRsrc --keepParent audio-separator-mac-arm audio-separator-mac-arm.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audio-separator-mac-arm
+          path: audio-separator-mac-arm.zip
+
+  release:
+    name: Create Release
+    needs: [build-mac-intel, build-mac-arm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: audio-separator-mac-intel
+          path: ./artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: audio-separator-mac-arm
+          path: ./artifacts
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: v1.0.0 - Audio Separator with Wind Instrument Support
+          body: |
+            ## Audio Separator v1.0.0
+            
+            Standalone frozen binary for audio source separation.
+            
+            ### Supported Models
+            - **17_HP-Wind_Inst-UVR.pth** - Wind instrument separation
+            - And many other UVR/VR/MDX models
+            
+            ### Usage
+            ```bash
+            ./audio-separator -m "17_HP-Wind_Inst-UVR.pth" -o output_dir input.wav
+            ```
+            
+            ### Credits
+            - [karaokenerds/python-audio-separator](https://github.com/karaokenerds/python-audio-separator)
+          files: |
+            ./artifacts/audio-separator-mac-intel.zip
+            ./artifacts/audio-separator-mac-arm.zip
+          draft: false
+          prerelease: false
