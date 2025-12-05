@@ -6,15 +6,14 @@ on:
 
 jobs:
   build-mac-intel:
-    name: Build for macOS Intel
+    name: Build for macOS Intel (CPU)
     runs-on: macos-13
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      # Pin dependencies for compatibility
-      - run: pip install 'numpy<2' 'cx-Freeze==6.15.16' audio-separator onnxruntime samplerate
+      - run: pip install 'numpy<2' 'cx-Freeze==6.15.16' 'torch==2.2.2' audio-separator onnxruntime samplerate
       - run: cxfreeze main.py --target-dir=audio-separator-mac-intel --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate
       - run: |
           chmod +x audio-separator-mac-intel/audio-separator
@@ -26,14 +25,15 @@ jobs:
           path: audio-separator-mac-intel.zip
 
   build-mac-arm:
-    name: Build for macOS ARM (Apple Silicon)
+    name: Build for macOS ARM (MPS GPU)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - run: pip install 'numpy<2' 'cx-Freeze==6.15.16' audio-separator onnxruntime samplerate
+      # MPS support is built into PyTorch for Apple Silicon
+      - run: pip install 'numpy<2' 'cx-Freeze==6.15.16' 'torch==2.2.2' audio-separator onnxruntime samplerate
       - run: cxfreeze main.py --target-dir=audio-separator-mac-arm --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate
       - run: |
           chmod +x audio-separator-mac-arm/audio-separator
@@ -61,24 +61,27 @@ jobs:
           path: ./artifacts
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.3
-          name: v1.0.3 - Audio Separator with Wind Instrument Support
+          tag_name: v1.1.0
+          name: v1.1.0 - Audio Separator with GPU Support
           body: |
-            ## Audio Separator v1.0.3
+            ## Audio Separator v1.1.0
             
             Standalone frozen binary for audio source separation.
             
+            ### GPU Support
+            - **macOS ARM**: MPS (Metal) acceleration on Apple Silicon
+            - **macOS Intel**: CPU only
+            - **Windows**: See Windows release for CUDA support
+            
             ### Supported Models
-            - **17_HP-Wind_Inst-UVR.pth** - Wind instrument separation
-            - And many other UVR/VR/MDX models
+            - VR Architecture (17_HP-Wind_Inst-UVR.pth for wind instruments)
+            - MDX Architecture
+            - And many other UVR models
             
             ### Usage
             ```bash
-            ./audio-separator -m "17_HP-Wind_Inst-UVR.pth" -o output_dir input.wav
+            ./audio-separator -m "17_HP-Wind_Inst-UVR.pth" --output_dir output input.wav
             ```
-            
-            ### Credits
-            - [karaokenerds/python-audio-separator](https://github.com/karaokenerds/python-audio-separator)
           files: |
             ./artifacts/audio-separator-mac-intel.zip
             ./artifacts/audio-separator-mac-arm.zip
