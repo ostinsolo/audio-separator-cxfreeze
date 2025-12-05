@@ -14,7 +14,7 @@ jobs:
         with:
           python-version: '3.10'
       # Pin dependencies for compatibility
-      - run: pip install 'numpy<2' 'cx-Freeze==6.15.16' audio-separator onnxruntime
+      - run: pip install 'numpy<2' 'cx-Freeze==6.15.16' audio-separator onnxruntime samplerate
       - run: cxfreeze main.py --target-dir=audio-separator-mac-intel --target-name=audio-separator --packages=audio_separator,onnxruntime
       - run: |
           chmod +x audio-separator-mac-intel/audio-separator
@@ -33,7 +33,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - run: pip install 'numpy<2' 'cx-Freeze==6.15.16' audio-separator onnxruntime
+      - run: pip install 'numpy<2' 'cx-Freeze==6.15.16' audio-separator onnxruntime samplerate
       - run: cxfreeze main.py --target-dir=audio-separator-mac-arm --target-name=audio-separator --packages=audio_separator,onnxruntime
       - run: |
           chmod +x audio-separator-mac-arm/audio-separator
@@ -61,10 +61,10 @@ jobs:
           path: ./artifacts
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.1
-          name: v1.0.1 - Audio Separator with Wind Instrument Support
+          tag_name: v1.0.2
+          name: v1.0.2 - Audio Separator with Wind Instrument Support
           body: |
-            ## Audio Separator v1.0.1
+            ## Audio Separator v1.0.2
             
             Standalone frozen binary for audio source separation.
             
