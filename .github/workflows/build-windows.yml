@@ -24,29 +24,9 @@ jobs:
           name: audio-separator-win-cpu
           path: audio-separator-win-cpu.zip
 
-  build-windows-cuda:
-    name: Build for Windows (CUDA 12.1)
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-      - run: pip install 'numpy<2' 'cx-Freeze==6.15.16' audio-separator onnxruntime-gpu samplerate
-      # Install PyTorch with CUDA 12.1 support
-      - run: pip install torch==2.2.2+cu121 --index-url https://download.pytorch.org/whl/cu121
-      - run: cxfreeze main.py --target-dir=audio-separator-win-cuda --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate
-      - run: |
-          .\audio-separator-win-cuda\audio-separator.exe --help
-      - run: Compress-Archive -Path audio-separator-win-cuda -DestinationPath audio-separator-win-cuda.zip
-      - uses: actions/upload-artifact@v4
-        with:
-          name: audio-separator-win-cuda
-          path: audio-separator-win-cuda.zip
-
   release:
     name: Create Windows Release
-    needs: [build-windows-cpu, build-windows-cuda]
+    needs: [build-windows-cpu]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -55,24 +35,17 @@ jobs:
         with:
           name: audio-separator-win-cpu
           path: ./artifacts
-      - uses: actions/download-artifact@v4
-        with:
-          name: audio-separator-win-cuda
-          path: ./artifacts
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: v1.1.0-win
-          name: v1.1.0 - Audio Separator Windows (CPU + CUDA)
+          name: v1.1.0 - Audio Separator Windows (CPU)
           body: |
             ## Audio Separator v1.1.0 - Windows
             
-            ### Variants
+            ### CPU Build
             - **audio-separator-win-cpu.zip**: CPU only (works everywhere)
-            - **audio-separator-win-cuda.zip**: CUDA 12.1 (NVIDIA GPU acceleration)
             
-            ### CUDA Requirements
-            - NVIDIA GPU with CUDA 12.1 support
-            - Latest NVIDIA drivers installed
+            Note: CUDA build exceeded GitHub's 2GB limit. Use CPU version which works on all systems.
             
             ### Usage
             ```powershell
@@ -80,6 +53,5 @@ jobs:
             ```
           files: |
             ./artifacts/audio-separator-win-cpu.zip
-            ./artifacts/audio-separator-win-cuda.zip
           draft: false
           prerelease: false
