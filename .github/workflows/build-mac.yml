@@ -61,10 +61,10 @@ jobs:
           path: ./artifacts
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: v1.0.0 - Audio Separator with Wind Instrument Support
+          tag_name: v1.0.1
+          name: v1.0.1 - Audio Separator with Wind Instrument Support
           body: |
-            ## Audio Separator v1.0.0
+            ## Audio Separator v1.0.1
             
             Standalone frozen binary for audio source separation.
             
