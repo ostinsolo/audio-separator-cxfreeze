@@ -5,33 +5,8 @@ on:
     branches: [main, master]
 
 jobs:
-  build-mac-intel:
-    name: Build for macOS Intel (CPU)
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.10'
-      # Install all dependencies including Apollo's
-      - run: |
-          pip install 'numpy<2' 'cx-Freeze==6.15.16' 'torch==2.2.2' 'torchaudio==2.2.2'
-          pip install audio-separator onnxruntime samplerate
-          pip install soundfile omegaconf pytorch-lightning huggingface_hub scipy
-      - run: |
-          cxfreeze main.py --target-dir=audio-separator-mac-intel --target-name=audio-separator \
-            --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy
-      - run: |
-          chmod +x audio-separator-mac-intel/audio-separator
-          ./audio-separator-mac-intel/audio-separator --help
-      - run: ditto -c -k --sequesterRsrc --keepParent audio-separator-mac-intel audio-separator-mac-intel.zip
-      - uses: actions/upload-artifact@v4
-        with:
-          name: audio-separator-mac-intel
-          path: audio-separator-mac-intel.zip
-
   build-mac-arm:
-    name: Build for macOS ARM (MPS GPU)
+    name: Build for macOS (Universal - ARM/Intel via Rosetta)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -44,31 +19,27 @@ jobs:
           pip install audio-separator onnxruntime samplerate
           pip install soundfile omegaconf pytorch-lightning huggingface_hub scipy
       - run: |
-          cxfreeze main.py --target-dir=audio-separator-mac-arm --target-name=audio-separator \
+          cxfreeze main.py --target-dir=audio-separator-mac --target-name=audio-separator \
             --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy
       - run: |
-          chmod +x audio-separator-mac-arm/audio-separator
-          ./audio-separator-mac-arm/audio-separator --help
-      - run: ditto -c -k --sequesterRsrc --keepParent audio-separator-mac-arm audio-separator-mac-arm.zip
+          chmod +x audio-separator-mac/audio-separator
+          ./audio-separator-mac/audio-separator --help
+      - run: ditto -c -k --sequesterRsrc --keepParent audio-separator-mac audio-separator-mac.zip
       - uses: actions/upload-artifact@v4
         with:
-          name: audio-separator-mac-arm
-          path: audio-separator-mac-arm.zip
+          name: audio-separator-mac
+          path: audio-separator-mac.zip
 
   release:
     name: Create Release
-    needs: [build-mac-intel, build-mac-arm]
+    needs: [build-mac-arm]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: audio-separator-mac-intel
-          path: ./artifacts
-      - uses: actions/download-artifact@v4
-        with:
-          name: audio-separator-mac-arm
+          name: audio-separator-mac
           path: ./artifacts
       - uses: softprops/action-gh-release@v2
         with:
@@ -98,10 +69,10 @@ jobs:
             ./audio-separator -m "17_HP-Wind_Inst-UVR.pth" --output_dir output input.wav
             ```
             
-            ### GPU Support
-            - **macOS ARM**: MPS (Metal) acceleration for separation
-            - **macOS Intel**: CPU only
-            - **Windows**: See Windows release for CUDA support
+            ### Compatibility
+            - **macOS ARM (Apple Silicon)**: Native performance + MPS acceleration
+            - **macOS Intel**: Runs via Rosetta 2 (CPU mode)
+            - **Windows**: See Windows release
             
             ### Supported Separation Models
             - VR Architecture (wind instruments, vocals, etc.)
@@ -109,7 +80,6 @@ jobs:
             - Demucs
             - Roformer
           files: |
-            ./artifacts/audio-separator-mac-intel.zip
-            ./artifacts/audio-separator-mac-arm.zip
+            ./artifacts/audio-separator-mac.zip
           draft: false
           prerelease: false
