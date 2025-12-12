@@ -2,7 +2,7 @@ name: build-windows
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, master]
 
 jobs:
   build-windows-cpu:
@@ -13,9 +13,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - run: pip install 'numpy<2' 'cx-Freeze==6.15.16' audio-separator onnxruntime samplerate
-      - run: pip install torch==2.2.2 --index-url https://download.pytorch.org/whl/cpu
-      - run: cxfreeze main.py --target-dir=audio-separator-win-cpu --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate
+      # Install all dependencies including Apollo's
+      - run: |
+          pip install 'numpy<2' 'cx-Freeze==6.15.16' audio-separator onnxruntime samplerate
+          pip install torch==2.2.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cpu
+          pip install soundfile omegaconf pytorch-lightning huggingface_hub scipy
+      - run: |
+          cxfreeze main.py --target-dir=audio-separator-win-cpu --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy
       - run: |
           .\audio-separator-win-cpu\audio-separator.exe --help
       - run: Compress-Archive -Path audio-separator-win-cpu -DestinationPath audio-separator-win-cpu.zip
@@ -37,20 +41,33 @@ jobs:
           path: ./artifacts
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.0-win
-          name: v1.1.0 - Audio Separator Windows (CPU)
+          tag_name: v1.2.0-win
+          name: v1.2.0 - Audio Separator + Apollo Windows (CPU)
           body: |
-            ## Audio Separator v1.1.0 - Windows
+            ## Audio Separator v1.2.0 + Apollo - Windows
+            
+            ### NEW: Apollo Audio Restoration
+            Convert lossy compressed audio (MP3, AAC) to higher quality!
+            
+            ```powershell
+            # Apollo mode
+            .\audio-separator.exe --apollo input.mp3 -o restored.wav -m apollo_lew_uni.ckpt
+            ```
+            
+            **Apollo Models:**
+            - `apollo_lew_uni.ckpt` - RECOMMENDED (feature_dim=384)
+            - `apollo_official.bin` - General restoration
+            - `apollo_lew_v2.ckpt` - Lightweight
+            
+            ### Audio Separation (unchanged)
+            ```powershell
+            .\audio-separator.exe -m "17_HP-Wind_Inst-UVR.pth" --output_dir output input.wav
+            ```
             
             ### CPU Build
             - **audio-separator-win-cpu.zip**: CPU only (works everywhere)
             
-            Note: CUDA build exceeded GitHub's 2GB limit. Use CPU version which works on all systems.
-            
-            ### Usage
-            ```powershell
-            .\audio-separator.exe -m "17_HP-Wind_Inst-UVR.pth" --output_dir output input.wav
-            ```
+            Note: CUDA build exceeded GitHub's 2GB limit. Use CPU version.
           files: |
             ./artifacts/audio-separator-win-cpu.zip
           draft: false

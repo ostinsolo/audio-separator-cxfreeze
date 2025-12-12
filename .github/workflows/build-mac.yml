@@ -2,7 +2,7 @@ name: build-mac
 on:
   workflow_dispatch:
   push:
-    branches: [main]
+    branches: [main, master]
 
 jobs:
   build-mac-intel:
@@ -13,8 +13,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      - run: pip install 'numpy<2' 'cx-Freeze==6.15.16' 'torch==2.2.2' audio-separator onnxruntime samplerate
-      - run: cxfreeze main.py --target-dir=audio-separator-mac-intel --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate
+      # Install all dependencies including Apollo's
+      - run: |
+          pip install 'numpy<2' 'cx-Freeze==6.15.16' 'torch==2.2.2' 'torchaudio==2.2.2'
+          pip install audio-separator onnxruntime samplerate
+          pip install soundfile omegaconf pytorch-lightning huggingface_hub scipy
+      - run: |
+          cxfreeze main.py --target-dir=audio-separator-mac-intel --target-name=audio-separator \
+            --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy
       - run: |
           chmod +x audio-separator-mac-intel/audio-separator
           ./audio-separator-mac-intel/audio-separator --help
@@ -32,9 +38,14 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      # MPS support is built into PyTorch for Apple Silicon
-      - run: pip install 'numpy<2' 'cx-Freeze==6.15.16' 'torch==2.2.2' audio-separator onnxruntime samplerate
-      - run: cxfreeze main.py --target-dir=audio-separator-mac-arm --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate
+      # Install all dependencies including Apollo's
+      - run: |
+          pip install 'numpy<2' 'cx-Freeze==6.15.16' 'torch==2.2.2' 'torchaudio==2.2.2'
+          pip install audio-separator onnxruntime samplerate
+          pip install soundfile omegaconf pytorch-lightning huggingface_hub scipy
+      - run: |
+          cxfreeze main.py --target-dir=audio-separator-mac-arm --target-name=audio-separator \
+            --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy
       - run: |
           chmod +x audio-separator-mac-arm/audio-separator
           ./audio-separator-mac-arm/audio-separator --help
@@ -61,27 +72,42 @@ jobs:
           path: ./artifacts
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.0
-          name: v1.1.0 - Audio Separator with GPU Support
+          tag_name: v1.2.0
+          name: v1.2.0 - Audio Separator + Apollo
           body: |
-            ## Audio Separator v1.1.0
+            ## Audio Separator v1.2.0 + Apollo Audio Restoration
             
-            Standalone frozen binary for audio source separation.
+            Standalone frozen binary for audio source separation AND restoration.
             
-            ### GPU Support
-            - **macOS ARM**: MPS (Metal) acceleration on Apple Silicon
-            - **macOS Intel**: CPU only
-            - **Windows**: See Windows release for CUDA support
+            ### NEW: Apollo Audio Restoration
+            Convert lossy compressed audio (MP3, AAC) to higher quality!
             
-            ### Supported Models
-            - VR Architecture (17_HP-Wind_Inst-UVR.pth for wind instruments)
-            - MDX Architecture
-            - And many other UVR models
+            ```bash
+            # Apollo mode
+            ./audio-separator --apollo input.mp3 -o restored.wav -m apollo_lew_uni.ckpt
+            ```
             
-            ### Usage
+            **Apollo Models:**
+            - `apollo_lew_uni.ckpt` - RECOMMENDED (feature_dim=384)
+            - `apollo_official.bin` - General restoration (feature_dim=256)
+            - `apollo_lew_v2.ckpt` - Lightweight (feature_dim=192)
+            - `apollo_edm_big.ckpt` - EDM/Electronic (feature_dim=256)
+            
+            ### Audio Separation (unchanged)
             ```bash
             ./audio-separator -m "17_HP-Wind_Inst-UVR.pth" --output_dir output input.wav
             ```
+            
+            ### GPU Support
+            - **macOS ARM**: MPS (Metal) acceleration for separation
+            - **macOS Intel**: CPU only
+            - **Windows**: See Windows release for CUDA support
+            
+            ### Supported Separation Models
+            - VR Architecture (wind instruments, vocals, etc.)
+            - MDX Architecture
+            - Demucs
+            - Roformer
           files: |
             ./artifacts/audio-separator-mac-intel.zip
             ./artifacts/audio-separator-mac-arm.zip
