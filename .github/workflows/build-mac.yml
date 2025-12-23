@@ -6,29 +6,73 @@ on:
 
 jobs:
   build-mac-arm:
-    name: Build for macOS (Universal - ARM/Intel via Rosetta)
+    name: Build for macOS (ARM - Apple Silicon)
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      # Install all dependencies including Apollo's
-      - run: |
-          pip install 'numpy<2' 'cx-Freeze==6.15.16' 'torch==2.2.2' 'torchaudio==2.2.2'
-          pip install audio-separator onnxruntime samplerate
-          pip install soundfile omegaconf pytorch-lightning huggingface_hub scipy
-      - run: |
-          cxfreeze main.py --target-dir=audio-separator-mac --target-name=audio-separator \
-            --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy
-      - run: |
+      
+      # Install all dependencies (matching build-intel.sh)
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install 'cx-Freeze==6.15.16'
+          
+          # PyTorch for macOS ARM
+          pip install 'numpy<2' 'torch==2.2.2' 'torchaudio==2.2.2'
+          
+          # Audio separator (no-deps to control versions)
+          pip install --no-deps audio-separator
+          
+          # All dependencies from python-audio-separator + our testing
+          pip install \
+            requests \
+            librosa \
+            samplerate \
+            six \
+            tqdm \
+            pydub \
+            onnx \
+            onnx2torch \
+            onnxruntime \
+            julius \
+            diffq \
+            einops \
+            pyyaml \
+            ml_collections \
+            resampy \
+            beartype \
+            rotary-embedding-torch \
+            scipy \
+            soundfile
+          
+          # Additional for cx_Freeze bundling
+          pip install torchvision pytorch-lightning huggingface_hub omegaconf
+      
+      # Build with all packages
+      - name: Build frozen binary
+        run: |
+          cxfreeze main.py \
+            --target-dir=audio-separator-mac \
+            --target-name=audio-separator \
+            --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy,requests,librosa,pydub,einops,julius,diffq,resampy \
+            --include-files=apollo
+      
+      - name: Test binary
+        run: |
           chmod +x audio-separator-mac/audio-separator
-          ./audio-separator-mac/audio-separator --help
-      - run: ditto -c -k --sequesterRsrc --keepParent audio-separator-mac audio-separator-mac.zip
+          ./audio-separator-mac/audio-separator --version
+          ./audio-separator-mac/audio-separator --help | head -10
+      
+      - name: Create zip
+        run: ditto -c -k --sequesterRsrc --keepParent audio-separator-mac audio-separator-mac-arm.zip
+      
       - uses: actions/upload-artifact@v4
         with:
-          name: audio-separator-mac
-          path: audio-separator-mac.zip
+          name: audio-separator-mac-arm
+          path: audio-separator-mac-arm.zip
 
   release:
     name: Create Release
@@ -39,47 +83,48 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: audio-separator-mac
+          name: audio-separator-mac-arm
           path: ./artifacts
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.0
-          name: v1.2.0 - Audio Separator + Apollo
+          tag_name: v1.2.1
+          name: v1.2.1 - Audio Separator + Apollo (All Models)
           body: |
-            ## Audio Separator v1.2.0 + Apollo Audio Restoration
+            ## Audio Separator v1.2.1 + Apollo Audio Restoration
             
             Standalone frozen binary for audio source separation AND restoration.
+            **Now includes ALL necessary dependencies!**
             
-            ### NEW: Apollo Audio Restoration
-            Convert lossy compressed audio (MP3, AAC) to higher quality!
+            ### Features
             
+            #### Apollo Audio Restoration (NEW!)
+            Convert lossy compressed audio (MP3, AAC) to higher quality:
             ```bash
-            # Apollo mode
-            ./audio-separator --apollo input.mp3 -o restored.wav -m apollo_lew_uni.ckpt
+            ./audio-separator --apollo input.mp3 -o restored.wav -m apollo_lew_uni.ckpt -c config.yaml
             ```
             
             **Apollo Models:**
-            - `apollo_lew_uni.ckpt` - RECOMMENDED (feature_dim=384)
-            - `apollo_official.bin` - General restoration (feature_dim=256)
-            - `apollo_lew_v2.ckpt` - Lightweight (feature_dim=192)
-            - `apollo_edm_big.ckpt` - EDM/Electronic (feature_dim=256)
+            - `apollo_lew_uni.ckpt` - RECOMMENDED - Best quality
+            - `apollo_official.bin` - Official JusperLee model
+            - `apollo_lew_v2.ckpt` - Lightweight, fast
+            - `apollo_edm_big.ckpt` - EDM/Electronic music
             
-            ### Audio Separation (unchanged)
+            #### Audio Separation
             ```bash
             ./audio-separator -m "17_HP-Wind_Inst-UVR.pth" --output_dir output input.wav
             ```
             
-            ### Compatibility
-            - **macOS ARM (Apple Silicon)**: Native performance + MPS acceleration
-            - **macOS Intel**: Runs via Rosetta 2 (CPU mode)
-            - **Windows**: See Windows release
-            
-            ### Supported Separation Models
-            - VR Architecture (wind instruments, vocals, etc.)
+            **Supported Models:**
+            - VR Architecture (Wind, Vocals, Karaoke)
             - MDX Architecture
-            - Demucs
-            - Roformer
+            - Demucs (julius, diffq included)
+            - BS-RoFormer (beartype included)
+            
+            ### Downloads
+            - **macOS ARM (Apple Silicon)**: `audio-separator-mac-arm.zip`
+            - **macOS Intel**: See separate Intel build
+            - **Windows**: See Windows release
           files: |
-            ./artifacts/audio-separator-mac.zip
+            ./artifacts/audio-separator-mac-arm.zip
           draft: false
           prerelease: false

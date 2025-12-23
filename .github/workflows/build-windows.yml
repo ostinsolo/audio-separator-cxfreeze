@@ -13,16 +13,42 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-      # Install all dependencies including Apollo's
-      - run: |
-          pip install 'numpy<2' 'cx-Freeze==6.15.16' audio-separator onnxruntime samplerate
-          pip install torch==2.2.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cpu
-          pip install soundfile omegaconf pytorch-lightning huggingface_hub scipy
-      - run: |
-          cxfreeze main.py --target-dir=audio-separator-win-cpu --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy
-      - run: |
+      
+      # Install all dependencies (matching build-intel.sh)
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install cx-Freeze==6.15.16
+          
+          # PyTorch CPU for Windows
+          pip install numpy<2 torch==2.2.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cpu
+          
+          # Audio separator (no-deps to control versions)
+          pip install --no-deps audio-separator
+          
+          # All dependencies from python-audio-separator + our testing
+          pip install requests librosa samplerate six tqdm pydub
+          pip install onnx onnx2torch onnxruntime
+          pip install julius diffq einops pyyaml ml_collections
+          pip install resampy beartype rotary-embedding-torch
+          pip install scipy soundfile
+          
+          # Additional for cx_Freeze bundling
+          pip install torchvision pytorch-lightning huggingface_hub omegaconf
+      
+      # Build with all packages
+      - name: Build frozen binary
+        run: |
+          cxfreeze main.py --target-dir=audio-separator-win-cpu --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy,requests,librosa,pydub,einops,julius,diffq,resampy --include-files=apollo
+      
+      - name: Test binary
+        run: |
+          .\audio-separator-win-cpu\audio-separator.exe --version
           .\audio-separator-win-cpu\audio-separator.exe --help
-      - run: Compress-Archive -Path audio-separator-win-cpu -DestinationPath audio-separator-win-cpu.zip
+      
+      - name: Create zip
+        run: Compress-Archive -Path audio-separator-win-cpu -DestinationPath audio-separator-win-cpu.zip
+      
       - uses: actions/upload-artifact@v4
         with:
           name: audio-separator-win-cpu
@@ -41,28 +67,35 @@ jobs:
           path: ./artifacts
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.0-win
-          name: v1.2.0 - Audio Separator + Apollo Windows (CPU)
+          tag_name: v1.2.1-win
+          name: v1.2.1 - Audio Separator + Apollo Windows (CPU)
           body: |
-            ## Audio Separator v1.2.0 + Apollo - Windows
+            ## Audio Separator v1.2.1 + Apollo - Windows
             
-            ### NEW: Apollo Audio Restoration
-            Convert lossy compressed audio (MP3, AAC) to higher quality!
+            **Now includes ALL necessary dependencies!**
             
+            ### Apollo Audio Restoration (NEW!)
+            Convert lossy compressed audio (MP3, AAC) to higher quality:
             ```powershell
-            # Apollo mode
-            .\audio-separator.exe --apollo input.mp3 -o restored.wav -m apollo_lew_uni.ckpt
+            .\audio-separator.exe --apollo input.mp3 -o restored.wav -m apollo_lew_uni.ckpt -c config.yaml
             ```
             
             **Apollo Models:**
-            - `apollo_lew_uni.ckpt` - RECOMMENDED (feature_dim=384)
-            - `apollo_official.bin` - General restoration
+            - `apollo_lew_uni.ckpt` - RECOMMENDED - Best quality
+            - `apollo_official.bin` - Official JusperLee
             - `apollo_lew_v2.ckpt` - Lightweight
+            - `apollo_edm_big.ckpt` - EDM/Electronic
             
-            ### Audio Separation (unchanged)
+            ### Audio Separation
             ```powershell
             .\audio-separator.exe -m "17_HP-Wind_Inst-UVR.pth" --output_dir output input.wav
             ```
+            
+            **Supported Models:**
+            - VR Architecture (Wind, Vocals, Karaoke)
+            - MDX Architecture
+            - Demucs (julius, diffq included)
+            - BS-RoFormer (beartype included)
             
             ### CPU Build
             - **audio-separator-win-cpu.zip**: CPU only (works everywhere)
