@@ -87,42 +87,41 @@ jobs:
           path: ./artifacts
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.1
-          name: v1.2.1 - Audio Separator + Apollo (All Models)
+          tag_name: v1.2.2
+          name: v1.2.2 - Audio Separator + Apollo ARM Fix
           body: |
-            ## Audio Separator v1.2.1 + Apollo Audio Restoration
+            ## Audio Separator v1.2.2 + Apollo Audio Restoration
             
-            Standalone frozen binary for audio source separation AND restoration.
-            **Now includes ALL necessary dependencies!**
+            **ARM Mac Fix:** Fixed PyTorch 2.x + cx_Freeze compatibility issue that caused
+            `OSError: could not get source code` on Apple Silicon Macs.
+            
+            ### What's Fixed
+            - Added monkey-patch for `inspect.getsourcelines` to handle frozen executables
+            - ARM builds now work correctly with PyTorch 2.2.2
             
             ### Features
             
-            #### Apollo Audio Restoration (NEW!)
+            #### Apollo Audio Restoration
             Convert lossy compressed audio (MP3, AAC) to higher quality:
             ```bash
-            ./audio-separator --apollo input.mp3 -o restored.wav -m apollo_lew_uni.ckpt -c config.yaml
+            ./audio-separator --apollo input.mp3 -o restored.wav -m apollo_lew_uni.ckpt
             ```
-            
-            **Apollo Models:**
-            - `apollo_lew_uni.ckpt` - RECOMMENDED - Best quality
-            - `apollo_official.bin` - Official JusperLee model
-            - `apollo_lew_v2.ckpt` - Lightweight, fast
-            - `apollo_edm_big.ckpt` - EDM/Electronic music
             
             #### Audio Separation
             ```bash
             ./audio-separator -m "17_HP-Wind_Inst-UVR.pth" --output_dir output input.wav
             ```
             
-            **Supported Models:**
-            - VR Architecture (Wind, Vocals, Karaoke)
-            - MDX Architecture
-            - Demucs (julius, diffq included)
-            - BS-RoFormer (beartype included)
+            ### GPU Support
+            | Platform | Separation | Apollo |
+            |----------|------------|--------|
+            | macOS ARM (M1/M2/M3) | MPS (Metal) | CPU |
+            | macOS Intel | CPU | CPU |
+            | Windows | CPU | CPU |
             
             ### Downloads
             - **macOS ARM (Apple Silicon)**: `audio-separator-mac-arm.zip`
-            - **macOS Intel**: See separate Intel build
+            - **macOS Intel**: See v1.2.1 Intel build
             - **Windows**: See Windows release
           files: |
             ./artifacts/audio-separator-mac-arm.zip
