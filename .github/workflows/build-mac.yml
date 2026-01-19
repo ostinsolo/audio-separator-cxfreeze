@@ -14,14 +14,15 @@ jobs:
         with:
           python-version: '3.10'
       
-      # Install all dependencies (matching build-intel.sh)
+      # Install all dependencies
       - name: Install dependencies
         run: |
           pip install --upgrade pip
           pip install 'cx-Freeze==6.15.16'
           
-          # PyTorch for macOS ARM
-          pip install 'numpy<2' 'torch==2.2.2' 'torchaudio==2.2.2'
+          # PyTorch for macOS ARM - let it resolve to latest compatible (2.9.x)
+          # Note: torchaudio NOT needed - Apollo uses soundfile/scipy instead
+          pip install 'numpy<2' torch
           
           # Audio separator (no-deps to control versions)
           pip install --no-deps audio-separator
@@ -50,6 +51,9 @@ jobs:
           
           # Additional for cx_Freeze bundling
           pip install torchvision pytorch-lightning huggingface_hub omegaconf
+          
+          # Show installed torch version
+          pip show torch | grep Version
       
       # Build with all packages
       - name: Build frozen binary
@@ -87,17 +91,17 @@ jobs:
           path: ./artifacts
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.3
-          name: v1.2.3 - Apollo torchaudio Fix
+          tag_name: v1.2.4
+          name: v1.2.4 - ARM Mac Full Support
           body: |
-            ## Audio Separator v1.2.3 + Apollo Audio Restoration
+            ## Audio Separator v1.2.4 + Apollo Audio Restoration
             
-            **Apollo Fix:** Replaced torchaudio with soundfile/scipy to fix library linking errors on ARM Macs.
+            **Full ARM Mac Support** - Both VR Separation and Apollo Restoration now work on Apple Silicon!
             
             ### What's Fixed
             - v1.2.2: Fixed `OSError: could not get source code` (PyTorch 2.x + cx_Freeze)
-            - v1.2.3: Fixed `Symbol not found: __ZN3c1015SmallVectorBase` (torchaudio linking)
-            - Apollo now uses soundfile/scipy for audio I/O (more reliable in frozen executables)
+            - v1.2.3: Replaced torchaudio with soundfile/scipy for Apollo
+            - v1.2.4: Use latest PyTorch (2.9.x) for better ARM compatibility
             
             ### Features
             

@@ -1,0 +1,5 @@
+venv-*/
+audio-separator-arm-local/
+audio-separator-intel/
+*.dylib
+__pycache__/
