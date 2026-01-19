@@ -12,7 +12,9 @@ Models supported:
 import sys
 import os
 import torch
-import torchaudio
+import numpy as np
+import soundfile as sf
+from scipy import signal
 import argparse
 
 # Add apollo directory to path
@@ -33,17 +35,35 @@ def get_device():
 
 
 def load_audio(file_path, sr=44100):
-    """Load audio file and resample if needed"""
-    audio, samplerate = torchaudio.load(file_path)
+    """Load audio file and resample if needed using soundfile/scipy"""
+    audio, samplerate = sf.read(file_path, dtype='float32')
+    
+    # Convert to [C, T] format (soundfile returns [T, C] or [T] for mono)
+    if audio.ndim == 1:
+        audio = audio[np.newaxis, :]  # Mono: [1, T]
+    else:
+        audio = audio.T  # Stereo: [C, T]
+    
+    # Resample if needed using scipy
     if samplerate != sr:
-        audio = torchaudio.transforms.Resample(samplerate, sr)(audio)
-    return audio.unsqueeze(0)  # [1, C, T]
+        num_samples = int(len(audio[0]) * sr / samplerate)
+        audio = np.array([signal.resample(ch, num_samples) for ch in audio])
+    
+    # Convert to torch tensor [1, C, T]
+    return torch.from_numpy(audio).unsqueeze(0).float()
 
 
 def save_audio(file_path, audio, samplerate=44100):
-    """Save audio to file"""
-    audio = audio.squeeze(0).cpu()
-    torchaudio.save(file_path, audio, samplerate)
+    """Save audio to file using soundfile"""
+    audio = audio.squeeze(0).cpu().numpy()  # [C, T]
+    
+    # Convert to [T, C] for soundfile (or [T] for mono)
+    if audio.shape[0] == 1:
+        audio = audio[0]  # Mono
+    else:
+        audio = audio.T  # Stereo
+    
+    sf.write(file_path, audio, samplerate, subtype='PCM_16')
 
 
 def load_checkpoint(model, checkpoint_path, device):
