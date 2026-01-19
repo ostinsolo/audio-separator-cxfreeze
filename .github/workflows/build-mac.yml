@@ -87,17 +87,17 @@ jobs:
           path: ./artifacts
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.2
-          name: v1.2.2 - Audio Separator + Apollo ARM Fix
+          tag_name: v1.2.3
+          name: v1.2.3 - Apollo torchaudio Fix
           body: |
-            ## Audio Separator v1.2.2 + Apollo Audio Restoration
+            ## Audio Separator v1.2.3 + Apollo Audio Restoration
             
-            **ARM Mac Fix:** Fixed PyTorch 2.x + cx_Freeze compatibility issue that caused
-            `OSError: could not get source code` on Apple Silicon Macs.
+            **Apollo Fix:** Replaced torchaudio with soundfile/scipy to fix library linking errors on ARM Macs.
             
             ### What's Fixed
-            - Added monkey-patch for `inspect.getsourcelines` to handle frozen executables
-            - ARM builds now work correctly with PyTorch 2.2.2
+            - v1.2.2: Fixed `OSError: could not get source code` (PyTorch 2.x + cx_Freeze)
+            - v1.2.3: Fixed `Symbol not found: __ZN3c1015SmallVectorBase` (torchaudio linking)
+            - Apollo now uses soundfile/scipy for audio I/O (more reliable in frozen executables)
             
             ### Features
             
