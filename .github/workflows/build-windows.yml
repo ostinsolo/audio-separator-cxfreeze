@@ -39,7 +39,7 @@ jobs:
       # Build with all packages
       - name: Build frozen binary
         run: |
-          cxfreeze main.py --target-dir=audio-separator-win-cpu --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy,requests,librosa,pydub,einops,julius,diffq,resampy,torch,torch.nn,torch.utils,torchaudio --include-files=apollo
+          cxfreeze main.py --target-dir=audio-separator-win-cpu --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy,requests,librosa,pydub,einops,julius,diffq,resampy,torch,torch.nn,torch.utils,torchaudio,urllib,urllib.request,urllib.parse,urllib.error,http,http.client,email,importlib,importlib.metadata --include-files=apollo
       
       # Copy llvmlite.libs (contains msvcp140-*.dll required by llvmlite.dll)
       - name: Copy llvmlite.libs (MSVC runtime)
@@ -102,7 +102,7 @@ jobs:
       # Build with all packages
       - name: Build frozen binary (CUDA)
         run: |
-          cxfreeze main.py --target-dir=audio-separator-win-cuda --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy,requests,librosa,pydub,einops,julius,diffq,resampy,torch,torch.nn,torch.utils,torch.cuda,torchaudio --include-files=apollo
+          cxfreeze main.py --target-dir=audio-separator-win-cuda --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy,requests,librosa,pydub,einops,julius,diffq,resampy,torch,torch.nn,torch.utils,torch.cuda,torchaudio,urllib,urllib.request,urllib.parse,urllib.error,http,http.client,email,importlib,importlib.metadata --include-files=apollo
       
       # Copy llvmlite.libs (contains msvcp140-*.dll required by llvmlite.dll)
       - name: Copy llvmlite.libs (MSVC runtime)
