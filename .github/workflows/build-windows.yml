@@ -2,7 +2,8 @@ name: build-windows
 on:
   workflow_dispatch:
   push:
-    branches: [main, master]
+    tags:
+      - 'v*-win'
 
 jobs:
   build-windows-cpu:
@@ -17,11 +18,10 @@ jobs:
       # Install all dependencies (matching build-intel.sh)
       - name: Install dependencies
         run: |
-          pip install --upgrade pip
           pip install cx-Freeze==6.15.16
           
           # PyTorch CPU for Windows
-          pip install numpy<2 torch==2.2.2 torchaudio==2.2.2 --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy<2 torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cpu
           
           # Audio separator (no-deps to control versions)
           pip install --no-deps audio-separator
@@ -39,7 +39,21 @@ jobs:
       # Build with all packages
       - name: Build frozen binary
         run: |
-          cxfreeze main.py --target-dir=audio-separator-win-cpu --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy,requests,librosa,pydub,einops,julius,diffq,resampy --include-files=apollo
+          cxfreeze main.py --target-dir=audio-separator-win-cpu --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy,requests,librosa,pydub,einops,julius,diffq,resampy,torch,torch.nn,torch.utils,torchaudio --include-files=apollo
+      
+      # Copy llvmlite.libs (contains msvcp140-*.dll required by llvmlite.dll)
+      - name: Copy llvmlite.libs (MSVC runtime)
+        run: |
+          $llvmliteDir = python -c "import llvmlite; import os; print(os.path.dirname(llvmlite.__file__))"
+          $llvmliteLibs = Join-Path (Split-Path $llvmliteDir -Parent) "llvmlite.libs"
+          Write-Host "Copying llvmlite.libs from: $llvmliteLibs"
+          if (Test-Path $llvmliteLibs) {
+            Copy-Item -Path $llvmliteLibs -Destination "audio-separator-win-cpu/lib/llvmlite.libs" -Recurse -Force
+            Write-Host "llvmlite.libs copied successfully"
+          } else {
+            Write-Host "WARNING: llvmlite.libs not found at $llvmliteLibs"
+          }
+        shell: pwsh
       
       - name: Test binary
         run: |
@@ -54,9 +68,73 @@ jobs:
           name: audio-separator-win-cpu
           path: audio-separator-win-cpu.zip
 
+  build-windows-cuda:
+    name: Build for Windows (CUDA)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+      
+      # Install all dependencies with CUDA support
+      - name: Install dependencies (CUDA)
+        run: |
+          pip install cx-Freeze==6.15.16
+          
+          # PyTorch CUDA 12.4 for Windows
+          pip install numpy<2 torch==2.5.1+cu124 torchaudio==2.5.1+cu124 --index-url https://download.pytorch.org/whl/cu124
+          
+          # Audio separator (no-deps to control versions)
+          pip install --no-deps audio-separator
+          
+          # All dependencies from python-audio-separator + our testing
+          pip install requests librosa samplerate six tqdm pydub
+          pip install onnx onnx2torch onnxruntime-gpu
+          pip install julius diffq einops pyyaml ml_collections
+          pip install resampy beartype rotary-embedding-torch
+          pip install scipy soundfile
+          
+          # Additional for cx_Freeze bundling
+          pip install torchvision==0.20.1+cu124 --index-url https://download.pytorch.org/whl/cu124
+          pip install pytorch-lightning huggingface_hub omegaconf
+      
+      # Build with all packages
+      - name: Build frozen binary (CUDA)
+        run: |
+          cxfreeze main.py --target-dir=audio-separator-win-cuda --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy,requests,librosa,pydub,einops,julius,diffq,resampy,torch,torch.nn,torch.utils,torch.cuda,torchaudio --include-files=apollo
+      
+      # Copy llvmlite.libs (contains msvcp140-*.dll required by llvmlite.dll)
+      - name: Copy llvmlite.libs (MSVC runtime)
+        run: |
+          $llvmliteDir = python -c "import llvmlite; import os; print(os.path.dirname(llvmlite.__file__))"
+          $llvmliteLibs = Join-Path (Split-Path $llvmliteDir -Parent) "llvmlite.libs"
+          Write-Host "Copying llvmlite.libs from: $llvmliteLibs"
+          if (Test-Path $llvmliteLibs) {
+            Copy-Item -Path $llvmliteLibs -Destination "audio-separator-win-cuda/lib/llvmlite.libs" -Recurse -Force
+            Write-Host "llvmlite.libs copied successfully"
+          } else {
+            Write-Host "WARNING: llvmlite.libs not found at $llvmliteLibs"
+          }
+        shell: pwsh
+      
+      - name: Test binary (CUDA)
+        run: |
+          .\audio-separator-win-cuda\audio-separator.exe --version
+          .\audio-separator-win-cuda\audio-separator.exe --help
+      
+      # Use 7z for better compression (CUDA builds are large)
+      - name: Create 7z archive
+        run: 7z a -mx=9 audio-separator-win-cuda.7z audio-separator-win-cuda
+      
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audio-separator-win-cuda
+          path: audio-separator-win-cuda.7z
+
   release:
     name: Create Windows Release
-    needs: [build-windows-cpu]
+    needs: [build-windows-cpu, build-windows-cuda]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -65,16 +143,24 @@ jobs:
         with:
           name: audio-separator-win-cpu
           path: ./artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: audio-separator-win-cuda
+          path: ./artifacts
       - uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.2.1-win
-          name: v1.2.1 - Audio Separator + Apollo Windows (CPU)
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }} - Audio Separator + Apollo Windows
           body: |
-            ## Audio Separator v1.2.1 + Apollo - Windows
+            ## Audio Separator + Apollo - Windows (CPU & CUDA)
             
-            **Now includes ALL necessary dependencies!**
+            **Now with CUDA GPU acceleration!**
             
-            ### Apollo Audio Restoration (NEW!)
+            ### Downloads
+            - **audio-separator-win-cpu.zip** - CPU only (works everywhere, ~500MB)
+            - **audio-separator-win-cuda.7z** - CUDA GPU support (~1.5GB, requires NVIDIA GPU)
+            
+            ### Apollo Audio Restoration
             Convert lossy compressed audio (MP3, AAC) to higher quality:
             ```powershell
             .\audio-separator.exe --apollo input.mp3 -o restored.wav -m apollo_lew_uni.ckpt -c config.yaml
@@ -88,7 +174,11 @@ jobs:
             
             ### Audio Separation
             ```powershell
+            # CPU
             .\audio-separator.exe -m "17_HP-Wind_Inst-UVR.pth" --output_dir output input.wav
+            
+            # CUDA (GPU)
+            .\audio-separator.exe -m "17_HP-Wind_Inst-UVR.pth" --output_dir output input.wav --use_cuda
             ```
             
             **Supported Models:**
@@ -97,11 +187,11 @@ jobs:
             - Demucs (julius, diffq included)
             - BS-RoFormer (beartype included)
             
-            ### CPU Build
-            - **audio-separator-win-cpu.zip**: CPU only (works everywhere)
-            
-            Note: CUDA build exceeded GitHub's 2GB limit. Use CPU version.
+            ### Requirements
+            - **CPU build**: Windows 10/11
+            - **CUDA build**: Windows 10/11 + NVIDIA GPU with CUDA 12.4 drivers
           files: |
             ./artifacts/audio-separator-win-cpu.zip
+            ./artifacts/audio-separator-win-cuda.7z
           draft: false
           prerelease: false
