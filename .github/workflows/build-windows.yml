@@ -15,26 +15,10 @@ jobs:
         with:
           python-version: '3.10'
       
-      # Install all dependencies (matching build-intel.sh)
+      # Install dependencies (CPU)
       - name: Install dependencies
         run: |
-          pip install cx-Freeze==6.15.16
-          
-          # PyTorch CPU for Windows
-          pip install numpy<2 torch==2.5.1 torchaudio==2.5.1 --index-url https://download.pytorch.org/whl/cpu
-          
-          # Audio separator (no-deps to control versions)
-          pip install --no-deps audio-separator
-          
-          # All dependencies from python-audio-separator + our testing
-          pip install requests librosa samplerate six tqdm pydub
-          pip install onnx onnx2torch onnxruntime
-          pip install julius diffq einops pyyaml ml_collections
-          pip install resampy beartype rotary-embedding-torch
-          pip install scipy soundfile
-          
-          # Additional for cx_Freeze bundling
-          pip install torchvision pytorch-lightning huggingface_hub omegaconf
+          pip install -r build/requirements/requirements-cpu.txt
       
       # Build with all packages
       - name: Build frozen binary
@@ -80,24 +64,7 @@ jobs:
       # Install all dependencies with CUDA support
       - name: Install dependencies (CUDA)
         run: |
-          pip install cx-Freeze==6.15.16
-          
-          # PyTorch CUDA 12.4 for Windows
-          pip install numpy<2 torch==2.5.1+cu124 torchaudio==2.5.1+cu124 --index-url https://download.pytorch.org/whl/cu124
-          
-          # Audio separator (no-deps to control versions)
-          pip install --no-deps audio-separator
-          
-          # All dependencies from python-audio-separator + our testing
-          pip install requests librosa samplerate six tqdm pydub
-          pip install onnx onnx2torch onnxruntime-gpu
-          pip install julius diffq einops pyyaml ml_collections
-          pip install resampy beartype rotary-embedding-torch
-          pip install scipy soundfile
-          
-          # Additional for cx_Freeze bundling
-          pip install torchvision==0.20.1+cu124 --index-url https://download.pytorch.org/whl/cu124
-          pip install pytorch-lightning huggingface_hub omegaconf
+          pip install -r build/requirements/requirements-cuda.txt
       
       # Build with all packages (including full torch CUDA subpackages for optimization)
       - name: Build frozen binary (CUDA)
@@ -127,18 +94,82 @@ jobs:
           .\audio-separator-win-cuda\audio-separator.exe --version
           .\audio-separator-win-cuda\audio-separator.exe --help
       
-      # Use 7z for better compression (CUDA builds are large)
-      - name: Create 7z archive
-        run: 7z a -mx=9 audio-separator-win-cuda.7z audio-separator-win-cuda
+      # Use zip for best Windows compatibility
+      - name: Create zip archive (CUDA)
+        run: Compress-Archive -Path audio-separator-win-cuda -DestinationPath audio-separator-win-cuda.zip
+        shell: pwsh
       
       - uses: actions/upload-artifact@v4
         with:
           name: audio-separator-win-cuda
-          path: audio-separator-win-cuda.7z
+          path: audio-separator-win-cuda.zip
+
+  build-windows-dml:
+    name: Build for Windows (DirectML)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies (DirectML)
+        run: |
+          pip install cx-Freeze==6.15.16
+
+          # PyTorch CPU (DirectML doesn't need CUDA)
+          pip install numpy>=2 torch==2.10.0 torchaudio==2.10.0 torchvision==0.25.0 --index-url https://download.pytorch.org/whl/cpu
+
+          # Audio separator with DirectML extras
+          pip install --no-deps audio-separator[dml]
+
+          # All dependencies from python-audio-separator
+          pip install requests librosa samplerate six tqdm pydub
+          pip install onnx onnx2torch onnxruntime-directml
+          pip install julius diffq einops pyyaml ml_collections
+          pip install resampy beartype rotary-embedding-torch
+          pip install scipy soundfile
+          pip install pytorch-lightning huggingface_hub omegaconf
+
+      - name: Build frozen binary (DirectML)
+        run: |
+          cxfreeze main.py --target-dir=audio-separator-win-dml --target-name=audio-separator --packages=audio_separator,onnxruntime,samplerate,apollo,apollo.look2hear,apollo.look2hear.models,soundfile,omegaconf,scipy,requests,librosa,pydub,einops,julius,diffq,resampy,torch,torch.nn,torch.utils,torchaudio --include-files=apollo
+
+      # Copy llvmlite.libs folder (contains msvcp140-*.dll required on Windows)
+      - name: Copy llvmlite.libs (MSVC runtime)
+        run: |
+          $llvmliteDir = python -c "import llvmlite; import os; print(os.path.dirname(llvmlite.__file__))"
+          $llvmliteLibs = Join-Path (Split-Path $llvmliteDir -Parent) "llvmlite.libs"
+          Write-Host "Copying llvmlite.libs from: $llvmliteLibs"
+          if (Test-Path $llvmliteLibs) {
+            New-Item -ItemType Directory -Force -Path "audio-separator-win-dml/lib/llvmlite.libs"
+            Copy-Item -Path "$llvmliteLibs\*" -Destination "audio-separator-win-dml/lib/llvmlite.libs" -Recurse -Force
+            Write-Host "Copied llvmlite.libs folder"
+            Get-ChildItem -Path "audio-separator-win-dml/lib/llvmlite.libs" -Recurse
+          } else {
+            Write-Host "ERROR: llvmlite.libs not found!"
+            exit 1
+          }
+        shell: pwsh
+
+      - name: Test binary (DirectML)
+        run: |
+          .\audio-separator-win-dml\audio-separator.exe --version
+          .\audio-separator-win-dml\audio-separator.exe --help
+
+      - name: Create zip archive (DirectML)
+        run: |
+          Compress-Archive -Path audio-separator-win-dml -DestinationPath audio-separator-win-dml.zip
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: audio-separator-win-dml
+          path: audio-separator-win-dml.zip
 
   release:
     name: Create Windows Release
-    needs: [build-windows-cpu, build-windows-cuda]
+    needs: [build-windows-cpu, build-windows-cuda, build-windows-dml]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -151,18 +182,23 @@ jobs:
         with:
           name: audio-separator-win-cuda
           path: ./artifacts
+      - uses: actions/download-artifact@v4
+        with:
+          name: audio-separator-win-dml
+          path: ./artifacts
       - uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }} - Audio Separator + Apollo Windows
           body: |
-            ## Audio Separator + Apollo - Windows (CPU & CUDA)
-            
-            **Now with CUDA GPU acceleration!**
-            
+            ## Audio Separator + Apollo - Windows (CPU, CUDA & DirectML)
+
+            **Complete GPU support for all hardware!**
+
             ### Downloads
             - **audio-separator-win-cpu.zip** - CPU only (works everywhere, ~500MB)
-            - **audio-separator-win-cuda.7z** - CUDA GPU support (~1.5GB, requires NVIDIA GPU)
+            - **audio-separator-win-cuda.zip** - CUDA GPU support (~1.5GB, requires NVIDIA GPU)
+            - **audio-separator-win-dml.zip** - DirectML support (~500MB, requires AMD GPU)
             
             ### Apollo Audio Restoration
             Convert lossy compressed audio (MP3, AAC) to higher quality:
@@ -180,8 +216,11 @@ jobs:
             ```powershell
             # CPU
             .\audio-separator.exe -m "17_HP-Wind_Inst-UVR.pth" --output_dir output input.wav
-            
-            # CUDA (GPU)
+
+            # CUDA (NVIDIA GPU)
+            .\audio-separator.exe -m "17_HP-Wind_Inst-UVR.pth" --output_dir output input.wav --use_cuda
+
+            # DirectML (AMD GPU)
             .\audio-separator.exe -m "17_HP-Wind_Inst-UVR.pth" --output_dir output input.wav --use_cuda
             ```
             
@@ -192,10 +231,12 @@ jobs:
             - BS-RoFormer (beartype included)
             
             ### Requirements
-            - **CPU build**: Windows 10/11
-            - **CUDA build**: Windows 10/11 + NVIDIA GPU with CUDA 12.4 drivers
+            - **CPU build**: Windows 10/11 (PyTorch 2.10.0+cpu)
+            - **CUDA build**: Windows 10/11 + NVIDIA GPU with CUDA 12.6 drivers (PyTorch 2.10.0+cu126)
+            - **DirectML build**: Windows 10/11 + AMD GPU with DirectX 12 support (PyTorch 2.10.0+cpu)
           files: |
             ./artifacts/audio-separator-win-cpu.zip
-            ./artifacts/audio-separator-win-cuda.7z
+            ./artifacts/audio-separator-win-cuda.zip
+            ./artifacts/audio-separator-win-dml.zip
           draft: false
           prerelease: false

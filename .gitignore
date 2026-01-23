@@ -3,3 +3,27 @@ audio-separator-arm-local/
 audio-separator-intel/
 *.dylib
 __pycache__/
+
+# Local builds and test folders
+build_venv*/
+audio-separator-win-*/
+test_*/
+bench_*/
+clean_*/
+
+# Internal reports (not for release)
+BENCHMARKS.md
+!docs/BENCHMARKS.md
+
+# Temp investigation files
+_tmp_*
+
+# Local extracted releases
+release_v133_win/
+
+# Local bench scripts (contain local paths)
+bench_*.bat
+
+# Test outputs
+*.wav
+!apollo/test_*.wav

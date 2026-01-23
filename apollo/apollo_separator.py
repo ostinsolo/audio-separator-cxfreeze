@@ -66,6 +66,80 @@ def save_audio(file_path, audio, samplerate=44100):
     sf.write(file_path, audio, samplerate, subtype='PCM_16')
 
 
+def _chunk_restore(model, audio, sr, chunk_seconds, overlap_seconds, device):
+    """Restore audio in overlapping chunks to limit memory usage."""
+    total_samples = audio.shape[-1]
+    chunk_samples = max(1, int(chunk_seconds * sr))
+    overlap_samples = max(0, int(overlap_seconds * sr))
+    step = chunk_samples - overlap_samples
+    if step <= 0:
+        raise ValueError("chunk_seconds must be greater than overlap_seconds")
+
+    output = torch.zeros_like(audio, device="cpu")
+    weight_sum = torch.zeros_like(audio, device="cpu")
+
+    for start in range(0, total_samples, step):
+        end = min(start + chunk_samples, total_samples)
+        chunk = audio[:, :, start:end]
+        chunk_len = chunk.shape[-1]
+        if chunk_len < chunk_samples:
+            pad = torch.zeros((chunk.shape[0], chunk.shape[1], chunk_samples - chunk_len), device=chunk.device, dtype=chunk.dtype)
+            chunk = torch.cat([chunk, pad], dim=-1)
+
+        with torch.inference_mode():
+            restored = model(chunk)
+
+        restored = restored[:, :, :chunk_len].to("cpu")
+
+        weight = torch.ones((1, 1, chunk_len), device="cpu", dtype=restored.dtype)
+        if overlap_samples > 0:
+            if start > 0:
+                fade_in_len = min(overlap_samples, chunk_len)
+                weight[:, :, :fade_in_len] *= torch.linspace(0.0, 1.0, fade_in_len, device="cpu", dtype=restored.dtype)
+            if end < total_samples:
+                fade_out_len = min(overlap_samples, chunk_len)
+                weight[:, :, -fade_out_len:] *= torch.linspace(1.0, 0.0, fade_out_len, device="cpu", dtype=restored.dtype)
+
+        output[:, :, start:end] += restored * weight
+        weight_sum[:, :, start:end] += weight
+
+        if device.type == "cuda":
+            del restored
+            torch.cuda.empty_cache()
+
+    weight_sum = torch.clamp(weight_sum, min=1e-8)
+    return output / weight_sum
+
+
+def _configure_cpu_threads(auto_cpu_threads, cpu_threads):
+    """Configure torch CPU thread usage."""
+    if cpu_threads is not None:
+        threads = max(1, int(cpu_threads))
+        torch.set_num_threads(threads)
+        torch.set_num_interop_threads(1)
+        print(f"[Apollo] CPU threads set to {threads}")
+        return
+
+    if not auto_cpu_threads:
+        return
+
+    cores = os.cpu_count() or 4
+    threads = max(1, int(cores * 0.75))
+    try:
+        import psutil  # optional
+        load = psutil.cpu_percent(interval=0.3)
+        if load >= 70:
+            threads = max(1, int(cores * 0.25))
+        elif load >= 40:
+            threads = max(1, int(cores * 0.50))
+        print(f"[Apollo] CPU load {load:.1f}%, auto threads {threads}/{cores}")
+    except Exception:
+        print(f"[Apollo] CPU auto threads {threads}/{cores}")
+
+    torch.set_num_threads(threads)
+    torch.set_num_interop_threads(1)
+
+
 def load_checkpoint(model, checkpoint_path, device):
     """Load model checkpoint, handling different formats"""
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
@@ -114,7 +188,19 @@ def get_model_config(model_name):
         return configs['apollo_official']
 
 
-def restore_audio(input_path, output_path, model_path, config_path=None, feature_dim=None, layer=None):
+def restore_audio(
+    input_path,
+    output_path,
+    model_path,
+    config_path=None,
+    feature_dim=None,
+    layer=None,
+    chunk_seconds=20.0,
+    overlap_seconds=2.0,
+    auto_chunk_seconds=30.0,
+    cpu_threads=None,
+    auto_cpu_threads=False,
+):
     """
     Main restoration function
     
@@ -128,6 +214,14 @@ def restore_audio(input_path, output_path, model_path, config_path=None, feature
     """
     device = get_device()
     print(f"[Apollo] Using device: {device}")
+
+    # Use smaller default chunks on CUDA to avoid OOM on 8GB GPUs
+    if device.type == "cuda" and chunk_seconds == 20.0 and overlap_seconds == 2.0:
+        chunk_seconds = 5.0
+        overlap_seconds = 0.5
+
+    if device.type == "cpu":
+        _configure_cpu_threads(auto_cpu_threads, cpu_threads)
     
     # Get model config
     if config_path and os.path.exists(config_path):
@@ -172,9 +266,17 @@ def restore_audio(input_path, output_path, model_path, config_path=None, feature
     # Process
     print(f"[Apollo] Processing: {input_path}")
     audio = load_audio(input_path).to(device)
-    
-    with torch.no_grad():
-        restored = model(audio)
+
+    duration_seconds = audio.shape[-1] / 44100.0
+    use_chunking = chunk_seconds > 0 and (auto_chunk_seconds <= 0 or duration_seconds > auto_chunk_seconds)
+    if use_chunking:
+        print(
+            f"[Apollo] Chunked inference: chunk={chunk_seconds:.2f}s overlap={overlap_seconds:.2f}s (duration={duration_seconds:.2f}s)"
+        )
+        restored = _chunk_restore(model, audio, 44100, chunk_seconds, overlap_seconds, device)
+    else:
+        with torch.inference_mode():
+            restored = model(audio)
     
     # Save output
     save_audio(output_path, restored)
@@ -206,6 +308,16 @@ Models:
     parser.add_argument("-c", "--config_path", help="Path to config YAML (optional)")
     parser.add_argument("--feature_dim", type=int, help="Model feature dimension (auto-detected if not set)")
     parser.add_argument("--layer", type=int, help="Number of layers (auto-detected if not set)")
+    parser.add_argument("--chunk_seconds", type=float, default=20.0, help="Chunk length in seconds (0 to disable)")
+    parser.add_argument("--chunk_overlap", type=float, default=2.0, help="Chunk overlap in seconds")
+    parser.add_argument(
+        "--auto_chunk_seconds",
+        type=float,
+        default=30.0,
+        help="Only chunk when audio duration exceeds this (0 to always chunk)",
+    )
+    parser.add_argument("--cpu_threads", type=int, help="Set torch CPU thread count")
+    parser.add_argument("--auto_cpu_threads", action="store_true", help="Auto-tune CPU threads based on load")
     parser.add_argument("--output_dir", help="Output directory (default: current directory)")
     
     args = parser.parse_args()
@@ -228,7 +340,12 @@ Models:
             model_path=args.model_path,
             config_path=args.config_path,
             feature_dim=args.feature_dim,
-            layer=args.layer
+            layer=args.layer,
+            chunk_seconds=args.chunk_seconds,
+            overlap_seconds=args.chunk_overlap,
+            auto_chunk_seconds=args.auto_chunk_seconds,
+            cpu_threads=args.cpu_threads,
+            auto_cpu_threads=args.auto_cpu_threads,
         )
         print(f"[Apollo] Restoration complete!")
     except Exception as e:
