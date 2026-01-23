@@ -94,15 +94,14 @@ jobs:
           .\audio-separator-win-cuda\audio-separator.exe --version
           .\audio-separator-win-cuda\audio-separator.exe --help
       
-      # Use zip for best Windows compatibility
-      - name: Create zip archive (CUDA)
-        run: Compress-Archive -Path audio-separator-win-cuda -DestinationPath audio-separator-win-cuda.zip
-        shell: pwsh
+      # Use 7z to reduce CUDA artifact size
+      - name: Create 7z archive (CUDA)
+        run: 7z a -mx=9 audio-separator-win-cuda.7z audio-separator-win-cuda
       
       - uses: actions/upload-artifact@v4
         with:
           name: audio-separator-win-cuda
-          path: audio-separator-win-cuda.zip
+          path: audio-separator-win-cuda.7z
 
   build-windows-dml:
     name: Build for Windows (DirectML)
@@ -197,7 +196,7 @@ jobs:
 
             ### Downloads
             - **audio-separator-win-cpu.zip** - CPU only (works everywhere, ~500MB)
-            - **audio-separator-win-cuda.zip** - CUDA GPU support (~1.5GB, requires NVIDIA GPU)
+            - **audio-separator-win-cuda.7z** - CUDA GPU support (~1.5GB, requires NVIDIA GPU)
             - **audio-separator-win-dml.zip** - DirectML support (~500MB, requires AMD GPU)
             
             ### Apollo Audio Restoration
@@ -236,7 +235,7 @@ jobs:
             - **DirectML build**: Windows 10/11 + AMD GPU with DirectX 12 support (PyTorch 2.10.0+cpu)
           files: |
             ./artifacts/audio-separator-win-cpu.zip
-            ./artifacts/audio-separator-win-cuda.zip
+            ./artifacts/audio-separator-win-cuda.7z
             ./artifacts/audio-separator-win-dml.zip
           draft: false
           prerelease: false
