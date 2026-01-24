@@ -41,6 +41,29 @@ Frozen standalone binary combining:
 ./audio-separator --apollo input.mp3 -o restored.wav -m apollo_lew_uni.ckpt
 ```
 
+#### Apollo options
+```bash
+# Chunked inference (recommended for long files)
+./audio-separator --apollo input.wav -o restored.wav -m apollo_lew_uni.ckpt \
+  --chunk_seconds 7 --chunk_overlap 0.5 --auto_chunk_seconds 0
+
+# Auto-chunk only when input is longer than 30s
+./audio-separator --apollo input.wav -o restored.wav -m apollo_lew_uni.ckpt \
+  --chunk_seconds 10 --chunk_overlap 1 --auto_chunk_seconds 30
+
+# Limit CPU threads (Apollo only)
+./audio-separator --apollo input.wav -o restored.wav -m apollo_lew_uni.ckpt \
+  --cpu_threads 8
+
+# Auto CPU threads based on load
+./audio-separator --apollo input.wav -o restored.wav -m apollo_lew_uni.ckpt \
+  --auto_cpu_threads
+```
+
+Notes:
+- CUDA uses smaller default chunks when not overridden.
+- `--auto_chunk_seconds 0` forces chunking for all durations.
+
 ## Apollo Models
 
 | Model | Feature Dim | Best For | Download |
